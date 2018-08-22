@@ -16,7 +16,8 @@ namespace NetduinoBlink
         public const int ARDUCHIP_TEST1 = 0x00;
         public const int REG_SIZE = 8;
         private int sensorAddr = 0x30;
-        I2CDevice i2CDevice;
+        public const int I2C_READ_SPEED = 8000; // in khz
+
         private static SPI.Configuration spiConfig = new SPI.Configuration(
             ChipSelect_Port: Pins.GPIO_PIN_D7,      // Chip select is digital IO 4.
             ChipSelect_ActiveState: false,          // Chip select is active low.
@@ -30,7 +31,6 @@ namespace NetduinoBlink
         public SPI spiDevice;
 
         public ArduCAM_Mini() {
-            i2CDevice = new I2CDevice(new I2CDevice.Configuration(I2CReadRegRead, 50));
             spiDevice = new SPI(spiConfig);
         }
 
@@ -121,7 +121,7 @@ namespace NetduinoBlink
 
         public byte readRegister(int addr) {
             byte Addr = (byte)addr;
-            Debug.Print("Attempting read on addr " + addr);
+            Debug.Print("Attempting read on Addr " + addr);
 
             byte[] writeBuffer = new byte[2];
             byte[] readBuffer = new byte[2];
@@ -132,6 +132,32 @@ namespace NetduinoBlink
 
             Debug.Print(readBuffer[0].ToString("X2") + " " + readBuffer[1].ToString("X2"));
             return readBuffer[1];
+        }
+
+        public byte[] readI2CRegister(int addr, int regSize) {
+            Debug.Print("Attempting to read I2C register " + addr.ToString("X2"));
+
+            byte Addr = (byte)addr;
+            I2CDevice i2c = new I2CDevice(new I2CDevice.Configuration(Addr, I2C_READ_SPEED));
+
+            byte[] buffer = new byte[regSize];
+            I2CDevice.I2CTransaction[] reading = new I2CDevice.I2CTransaction[1];
+            reading[0] = I2CDevice.CreateReadTransaction(buffer);
+
+            int bytesRead = i2c.Execute(reading, 100);
+
+            if (bytesRead == 0) {
+                throw new NullReferenceException("0 bytes read for i2c register " + addr.ToString("X2"));
+            }
+
+            string message = "Read I2c " + addr.ToString("X2") + ":";
+
+            for (int index = 0; index < buffer.Length; index++) {
+                message += " " + buffer[index].ToString();
+            }
+            Debug.Print(message);
+
+            return buffer;
         }
 
 
@@ -160,7 +186,8 @@ namespace NetduinoBlink
                 throw new NotSupportedException("Test register didn't return 0x55!!");
             }
 
-            //byte chipVersion = arduCAM.readRegister(0x40);
+
+            byte[] chipVersion = arduCAM.readI2CRegister(0x40, 1);
 
             //if ((int)chipVersion == 0x40) {
             //    Debug.Print("Succesfully confirmed OV2640_MINI_2MP");
