@@ -123,7 +123,7 @@ namespace ArduCamSingleShot
             {
                 message += " " + dataIn[index].ToString();
             }
-            Debug.Print(message);
+            //Debug.Print(message);
 
             return 1;
         }
@@ -383,11 +383,11 @@ namespace ArduCamSingleShot
                 {
                     temp_last = temp;
                     temp = arduCAM.ReadFIFO();
-                    //Debug.Print(temp);
                     Thread.Sleep(10);
                 }
                 //Clear the capture done flag 
                 arduCAM.ClearFIFO_Flag();
+                Debug.Print("Cleared FIFO flag after capture");
             } else {
                 Debug.Print("Capture not complete,  got bit as " + bit.ToString());
             }
