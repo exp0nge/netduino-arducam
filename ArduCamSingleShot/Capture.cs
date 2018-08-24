@@ -3,6 +3,7 @@ using Microsoft.SPOT.Hardware;
 using System.Threading;
 using SecretLabs.NETMF.Hardware.Netduino;
 using System;
+using System.IO;
 
 namespace ArduCamSingleShot
 {
@@ -111,10 +112,10 @@ namespace ArduCamSingleShot
             return 1;
         }
 
-        private int busRead(int addr)
+        private uint busRead(int addr)
         {
             byte[] dataOut = new byte[] { (byte)addr, (byte)0x55 };
-            byte[] dataIn = new byte[REG_SIZE];
+            byte[] dataIn = new byte[1];
             spiDevice.WriteRead(dataOut, dataIn);
 
             string message = "Read SPI " + addr.ToString() + ":";
@@ -125,7 +126,7 @@ namespace ArduCamSingleShot
             }
             //Debug.Print(message);
 
-            return 1;
+            return dataIn[0];
         }
 
         public byte writeRegister(int addr, int data)
@@ -222,14 +223,12 @@ namespace ArduCamSingleShot
             {
                 throw new NullReferenceException("0 bytes read for i2c register " + addr.ToString("X2"));
             }
-            else
-            {
-                Debug.Print("Bytes read: " + bytesRead.ToString());
-            }
         }
 
-        public void WriteI2CRegisters(SensorReg[] regs) {
-            for (int i = 0; i < regs.Length; i++) {
+        public void WriteI2CRegisters(SensorReg[] regs)
+        {
+            for (int i = 0; i < regs.Length; i++)
+            {
                 if ((regs[i].Reg != 0xFF) | (regs[i].Val != 0xFF))
                 {
                     writeI2CRegister(regs[i].Reg, regs[i].Val);
@@ -238,7 +237,8 @@ namespace ArduCamSingleShot
             }
         }
 
-        public void InitCam() {
+        public void InitCam()
+        {
             writeI2CRegister(0xff, 0x01);
             Thread.Sleep(10);
             writeRegister(0x12, 0x80);
@@ -262,19 +262,23 @@ namespace ArduCamSingleShot
             WriteI2CRegisters(InitSettings.SIZE_320x420);
         }
 
-        public void ClearFIFO_Flag() {
+        public void ClearFIFO_Flag()
+        {
             writeRegister(ARDUCHIP_FIFO, FIFO_CLEAR_MASK);
         }
 
-        public void FlushFIFO() {
+        public void FlushFIFO()
+        {
             writeRegister(ARDUCHIP_FIFO, FIFO_CLEAR_MASK);
         }
 
-        public void StartCapture() {
+        public void StartCapture()
+        {
             writeRegister(ARDUCHIP_FIFO, FIFO_START_MASK);
         }
 
-        public int ReadFIFO_Length() {
+        public int ReadFIFO_Length()
+        {
             int len1, len2, len3, length = 0;
             len1 = readRegister(FIFO_SIZE1);
             len2 = readRegister(FIFO_SIZE2);
@@ -283,26 +287,29 @@ namespace ArduCamSingleShot
             return length;
         }
 
-        public int ReadFIFO() {
-            int data;
+        public uint ReadFIFO()
+        {
+            uint data;
             data = busRead(SINGLE_FIFO_READ);
             return data;
         }
 
-        public int GetBit(int addr, int bit) {
+        public int GetBit(int addr, int bit)
+        {
             int temp;
             temp = readRegister(addr);
             temp = temp & bit;
             return temp;
         }
 
-        public void SetBit(int addr, int bit) {
+        public void SetBit(int addr, int bit)
+        {
             int temp;
             temp = readRegister(addr);
             writeRegister(addr, temp | bit);
         }
 
-        public static void Main()
+        public static byte[] SingleShotCapture()
         {
             // configure an output port for us to "write" to the LED
             OutputPort led = new OutputPort(Pins.ONBOARD_LED, false);
@@ -367,6 +374,16 @@ namespace ArduCamSingleShot
             Thread.Sleep(10);
             arduCAM.writeRegister(ARDUCHIP_FRAMES, 0x00);
 
+
+            Debug.Print("Setting brightness to 4");
+            arduCAM.writeRegister(0xff, 0x00);
+            arduCAM.writeRegister(0x7c, 0x00);
+            arduCAM.writeRegister(0x7d, 0x04);
+            arduCAM.writeRegister(0x7c, 0x09);
+            arduCAM.writeRegister(0x7d, 0x40);
+            arduCAM.writeRegister(0x7d, 0x00);
+
+
             Debug.Print("Attempting single capture");
             arduCAM.FlushFIFO();
             arduCAM.ClearFIFO_Flag();
@@ -374,31 +391,38 @@ namespace ArduCamSingleShot
 
             Thread.Sleep(50);
             int bit = arduCAM.GetBit(ARDUCHIP_TRIG, CAP_DONE_MASK);
-            if (bit > 0) {
+            if (bit > 0)
+            {
                 Debug.Print("Capture complete!");
                 arduCAM.SetBit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
                 Thread.Sleep(50);
-                int temp = 0, temp_last = 0;
-                while ((temp != 0xD9) | (temp_last != 0xFF))
+
+                using (MemoryStream output = new MemoryStream())
                 {
-                    temp_last = temp;
-                    temp = arduCAM.ReadFIFO();
-                    Thread.Sleep(10);
+                    Debug.Print("Saving to memory stream");
+                    uint temp = 0, temp_last = 0;
+                    while ((temp != 0xD9) | (temp_last != 0xFF))
+                    {
+                        temp_last = temp;
+                        temp = arduCAM.ReadFIFO();
+
+                        output.Write(new byte[] { (byte)temp }, 0, 1);
+
+                        Thread.Sleep(10);
+                    }
+                    //Clear the capture done flag 
+                    arduCAM.ClearFIFO_Flag();
+                    Debug.Print("Cleared FIFO flag after capture");
+                    var outputArray = output.ToArray();
+                    var fixedArray = new byte[outputArray.Length - 1];
+
+                    Array.Copy(outputArray, 1, fixedArray, 0, outputArray.Length - 1);
+                    return fixedArray;
                 }
-                //Clear the capture done flag 
-                arduCAM.ClearFIFO_Flag();
-                Debug.Print("Cleared FIFO flag after capture");
-            } else {
-                Debug.Print("Capture not complete,  got bit as " + bit.ToString());
             }
-
-
-            while (true)
+            else
             {
-                led.Write(true); // turn on the LED 
-                Thread.Sleep(250); // sleep for 250ms 
-                led.Write(false); // turn off the LED 
-                Thread.Sleep(250); // sleep for 250ms 
+                throw new IOException("Capture not complete,  got bit as " + bit.ToString());
             }
 
         }
