@@ -40,6 +40,72 @@ namespace ArduCamSingleShot
 
         public bool IsRunning { get; set; }
 
+        public static string UploadFilesToRemoteUrl(string url)
+        {
+            string boundary = "----------------------------" + DateTime.Now.Ticks.ToString("x");
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.ContentType = "multipart/form-data; boundary=" +
+                                    boundary;
+            request.Method = "POST";
+            request.KeepAlive = true;
+
+            Stream memStream = new System.IO.MemoryStream();
+
+            var boundarybytes = System.Text.Encoding.UTF8.GetBytes("\r\n--" +
+                                                                    boundary + "\r\n");
+            var endBoundaryBytes = System.Text.Encoding.UTF8.GetBytes("\r\n--" +
+                                                                        boundary + "--");
+
+
+            //string formitem = "\r\n--" + boundary +
+            //                            "\r\nContent-Disposition: form-data; name=\"file\";\r\n\r\nfilename";
+
+            //byte[] formitembytes = System.Text.Encoding.UTF8.GetBytes(formitem);
+            //memStream.Write(formitembytes, 0, formitembytes.Length);
+
+            string header =
+                "Content-Disposition: form-data; name=\"uplTheFile\"; filename=\"capture.jpg\"\r\n" +
+                "Content-Type: application/octet-stream\r\n\r\n";
+
+            memStream.Write(boundarybytes, 0, boundarybytes.Length);
+            var headerbytes = System.Text.Encoding.UTF8.GetBytes(header);
+
+            memStream.Write(headerbytes, 0, headerbytes.Length);
+
+            var path = Path.Combine("SD", "capture.jpg");
+
+            using (var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read))
+            {
+                var buffer = new byte[1024];
+                var bytesRead = 0;
+                while ((bytesRead = fileStream.Read(buffer, 0, buffer.Length)) != 0)
+                {
+                    memStream.Write(buffer, 0, bytesRead);
+                }
+            }
+
+            memStream.Write(endBoundaryBytes, 0, endBoundaryBytes.Length);
+            request.ContentLength = memStream.Length;
+
+            using (Stream requestStream = request.GetRequestStream())
+            {
+                memStream.Position = 0;
+                byte[] tempBuffer = new byte[memStream.Length];
+                memStream.Read(tempBuffer, 0, tempBuffer.Length);
+                memStream.Close();
+                requestStream.Write(tempBuffer, 0, tempBuffer.Length);
+            }
+
+            using (var response = request.GetResponse())
+            {
+                Stream stream2 = response.GetResponseStream();
+                StreamReader reader2 = new StreamReader(stream2);
+                return reader2.ReadToEnd();
+            }
+        }
+
+
         public void Run()
         {
             this.IsRunning = true;
@@ -49,29 +115,33 @@ namespace ArduCamSingleShot
             {
                 Debug.Print("Sending capturing request");
 
-                var jpeg = ArduCAM_Mini.SingleShotCapture();
+                //var jpeg = ArduCAM_Mini.SingleShotCapture();
+                ArduCAM_Mini.SingleShotCapture();
+                UploadFilesToRemoteUrl("http://192.168.0.102:5000/upload/");
+                //using (FileStream f = new FileStream("capture.jpg", FileMode.Open))
+                ////{
+                    //Debug.Print("Uploading to web server");
 
-                Debug.Print("Uploading to web server");
+                    //WebRequest request = WebRequest.Create("http://192.168.1.105:5000/upload/");
+                    //request.Method = "POST";
+                    //request.ContentType = "image/jpeg";
+                    //request.ContentLength = jpeg.Length;
 
-                WebRequest request = WebRequest.Create("http://192.168.0.102:5000/upload/");
-                request.Method = "POST";
-                request.ContentType = "image/jpeg";
-                request.ContentLength = jpeg.Length;
+                    //Debug.Print("Writing jpeg to data stream");
+                    //Stream dataStream = request.GetRequestStream();
+                    //dataStream.Write(jpeg, 0, jpeg.Length);
+                    //dataStream.Close();
 
-                Debug.Print("Writing jpeg to data stream");
-                Stream dataStream = request.GetRequestStream();
-                dataStream.Write(jpeg, 0, jpeg.Length);
-                dataStream.Close();
-
-                Debug.Print("Getting response");
-                WebResponse response = request.GetResponse();
-                dataStream = response.GetResponseStream();
-                StreamReader reader = new StreamReader(dataStream);
-                string responseFromServer = reader.ReadToEnd();
-                Debug.Print(responseFromServer);
-                reader.Close();
-                dataStream.Close();
-                response.Close();
+                    //Debug.Print("Getting response");
+                    //WebResponse response = request.GetResponse();
+                    //dataStream = response.GetResponseStream();
+                    //StreamReader reader = new StreamReader(dataStream);
+                    //string responseFromServer = reader.ReadToEnd();
+                    //Debug.Print(responseFromServer);
+                    //reader.Close();
+                    //dataStream.Close();
+                    //response.Close();
+                //}
             }
 
             this.IsRunning = false;

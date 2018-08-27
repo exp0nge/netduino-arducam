@@ -4,6 +4,7 @@ using System.Threading;
 using SecretLabs.NETMF.Hardware.Netduino;
 using System;
 using System.IO;
+using Microsoft.SPOT.IO;
 
 namespace ArduCamSingleShot
 {
@@ -32,6 +33,7 @@ namespace ArduCamSingleShot
         public const int ARDUCHIP_TRIG = 0x41;
         public const int CAP_DONE_MASK = 0x08;
         public const int GPIO_PWDN_MASK = 0x02;
+        public const int GPIO_PWREN_MASK = 0x04;
         public const int ARDUCHIP_GPIO = 0x06;
         public const int SINGLE_FIFO_READ = 0x3D;
 
@@ -309,11 +311,24 @@ namespace ArduCamSingleShot
             writeRegister(addr, temp | bit);
         }
 
-        public static byte[] SingleShotCapture()
+        public void ClearBit(int addr, int bit) {
+            int temp = readRegister(addr);
+            writeRegister(addr, temp & (~bit));
+        }
+
+        public static void SingleShotCapture()
+        //public static byte[] SingleShotCapture()
         {
             // configure an output port for us to "write" to the LED
             OutputPort led = new OutputPort(Pins.ONBOARD_LED, false);
             //OutputPort CS_Port = new OutputPort(Pins.GPIO_PIN_D7, true);
+
+            SDCard.OutputSDInfo();
+
+            var volume = new VolumeInfo("SD");
+            if (volume == null) {
+                throw new IOException("No sdcard found!!");
+            }
 
             Debug.Print("Attempting to instantiate ArduCAM_Mini");
             ArduCAM_Mini arduCAM = new ArduCAM_Mini();
@@ -336,6 +351,8 @@ namespace ArduCamSingleShot
             {
                 throw new NotSupportedException("Test register didn't return 0x55!!");
             }
+
+            arduCAM.ClearBit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
 
             arduCAM.writeI2CRegister(0xFF, 0x01);
             byte[] writeReadback = arduCAM.readI2CRegister(0xFF);
@@ -366,6 +383,7 @@ namespace ArduCamSingleShot
 
             Debug.Print("I2C is operational!");
 
+
             arduCAM.InitCam();
 
             Debug.Print("Clearing FIFO flag");
@@ -374,51 +392,57 @@ namespace ArduCamSingleShot
             Thread.Sleep(10);
             arduCAM.writeRegister(ARDUCHIP_FRAMES, 0x00);
 
+            Thread.Sleep(10);
 
-            Debug.Print("Setting brightness to 4");
-            arduCAM.writeRegister(0xff, 0x00);
-            arduCAM.writeRegister(0x7c, 0x00);
-            arduCAM.writeRegister(0x7d, 0x04);
-            arduCAM.writeRegister(0x7c, 0x09);
-            arduCAM.writeRegister(0x7d, 0x40);
-            arduCAM.writeRegister(0x7d, 0x00);
+            //Debug.Print("Setting brightness to 4");
+            //arduCAM.writeRegister(0xff, 0x00);
+            //arduCAM.writeRegister(0x7c, 0x00);
+            //arduCAM.writeRegister(0x7d, 0x04);
+            //arduCAM.writeRegister(0x7c, 0x09);
+            //arduCAM.writeRegister(0x7d, 0x40);
+            //arduCAM.writeRegister(0x7d, 0x00);
 
+            Thread.Sleep(10);
 
             Debug.Print("Attempting single capture");
             arduCAM.FlushFIFO();
             arduCAM.ClearFIFO_Flag();
             arduCAM.StartCapture();
 
-            Thread.Sleep(50);
+            Thread.Sleep(100);
             int bit = arduCAM.GetBit(ARDUCHIP_TRIG, CAP_DONE_MASK);
             if (bit > 0)
             {
                 Debug.Print("Capture complete!");
                 arduCAM.SetBit(ARDUCHIP_GPIO, GPIO_PWDN_MASK);
-                Thread.Sleep(50);
+                //Thread.Sleep(100);
 
                 using (MemoryStream output = new MemoryStream())
-                {
-                    Debug.Print("Saving to memory stream");
+                Debug.Print("Saving to sdcard as capture.jpg");
+                var sdcardFile = Path.Combine("SD", "capture.jpg");
+                var file = File.OpenWrite(sdcardFile);
+                //using (MemoryStream output = new MemoryStream())
+                //{
+
                     uint temp = 0, temp_last = 0;
                     while ((temp != 0xD9) | (temp_last != 0xFF))
                     {
                         temp_last = temp;
                         temp = arduCAM.ReadFIFO();
-
-                        output.Write(new byte[] { (byte)temp }, 0, 1);
-
-                        Thread.Sleep(10);
+                        file.WriteByte((byte)temp);
+                        //output.Write(new byte[] { (byte)temp }, 0, 1);
                     }
+                    volume.FlushAll();
                     //Clear the capture done flag 
                     arduCAM.ClearFIFO_Flag();
                     Debug.Print("Cleared FIFO flag after capture");
-                    var outputArray = output.ToArray();
-                    var fixedArray = new byte[outputArray.Length - 1];
+                    //var outputArray = output.ToArray();
+                    //var fixedArray = new byte[outputArray.Length - 1];
 
-                    Array.Copy(outputArray, 1, fixedArray, 0, outputArray.Length - 1);
-                    return fixedArray;
-                }
+                    //Array.Copy(outputArray, 1, fixedArray, 0, outputArray.Length - 1);
+                    //return fixedArray;
+                    //return outputArray;
+                //}
             }
             else
             {

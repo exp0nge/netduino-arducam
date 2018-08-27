@@ -5,8 +5,11 @@ app = Flask(__name__)
 
 @app.route('/upload/', methods=['POST'])
 def upload():
-    with open('capture.jpg', 'wb') as f:
-        f.write(request.data)
+    print(request.data)
+    print(request.files)
+    #with open('capture.jpg', 'wb') as f:
+    #    f.write(request.data)
+    #request.files['filename']
     return 'OK, saved file'
 
 
