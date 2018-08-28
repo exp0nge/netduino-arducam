@@ -42,6 +42,7 @@ namespace ArduCamSingleShot
 
         public static string UploadFilesToRemoteUrl(string url)
         {
+            Debug.Print("Attempting upload to " + url);
             string boundary = "----------------------------" + DateTime.Now.Ticks.ToString("x");
 
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
@@ -75,6 +76,7 @@ namespace ArduCamSingleShot
 
             var path = Path.Combine("SD", "capture.jpg");
 
+            Debug.Print("Writing file from sdcard to memory stream buffer");
             using (var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read))
             {
                 var buffer = new byte[1024];
@@ -88,6 +90,7 @@ namespace ArduCamSingleShot
             memStream.Write(endBoundaryBytes, 0, endBoundaryBytes.Length);
             request.ContentLength = memStream.Length;
 
+            Debug.Print("Writing file to request");
             using (Stream requestStream = request.GetRequestStream())
             {
                 memStream.Position = 0;
@@ -96,7 +99,7 @@ namespace ArduCamSingleShot
                 memStream.Close();
                 requestStream.Write(tempBuffer, 0, tempBuffer.Length);
             }
-
+            Debug.Print("Reading request response");
             using (var response = request.GetResponse())
             {
                 Stream stream2 = response.GetResponseStream();
@@ -115,33 +118,30 @@ namespace ArduCamSingleShot
             {
                 Debug.Print("Sending capturing request");
 
-                //var jpeg = ArduCAM_Mini.SingleShotCapture();
-                ArduCAM_Mini.SingleShotCapture();
-                UploadFilesToRemoteUrl("http://192.168.0.102:5000/upload/");
-                //using (FileStream f = new FileStream("capture.jpg", FileMode.Open))
-                ////{
-                    //Debug.Print("Uploading to web server");
+                var jpeg = ArduCAM_Mini.SingleShotCapture();
+                //ArduCAM_Mini.SingleShotCapture();
+                //UploadFilesToRemoteUrl("http://192.168.0.102:5000/upload/");
+                Debug.Print("Uploading to web server");
 
-                    //WebRequest request = WebRequest.Create("http://192.168.1.105:5000/upload/");
-                    //request.Method = "POST";
-                    //request.ContentType = "image/jpeg";
-                    //request.ContentLength = jpeg.Length;
+                WebRequest request = WebRequest.Create("http://192.168.0.102:5000/upload/");
+                request.Method = "POST";
+                request.ContentType = "image/jpeg";
+                request.ContentLength = jpeg.Length;
 
-                    //Debug.Print("Writing jpeg to data stream");
-                    //Stream dataStream = request.GetRequestStream();
-                    //dataStream.Write(jpeg, 0, jpeg.Length);
-                    //dataStream.Close();
+                Debug.Print("Writing jpeg to data stream");
+                Stream dataStream = request.GetRequestStream();
+                dataStream.Write(jpeg, 0, jpeg.Length);
+                dataStream.Close();
 
-                    //Debug.Print("Getting response");
-                    //WebResponse response = request.GetResponse();
-                    //dataStream = response.GetResponseStream();
-                    //StreamReader reader = new StreamReader(dataStream);
-                    //string responseFromServer = reader.ReadToEnd();
-                    //Debug.Print(responseFromServer);
-                    //reader.Close();
-                    //dataStream.Close();
-                    //response.Close();
-                //}
+                Debug.Print("Getting response");
+                WebResponse response = request.GetResponse();
+                dataStream = response.GetResponseStream();
+                StreamReader reader = new StreamReader(dataStream);
+                string responseFromServer = reader.ReadToEnd();
+                Debug.Print(responseFromServer);
+                reader.Close();
+                dataStream.Close();
+                response.Close();
             }
 
             this.IsRunning = false;
